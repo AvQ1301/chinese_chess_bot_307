@@ -116,6 +116,9 @@ git add .gitattributes
 git commit -m "chore: setup Git LFS for CAD files"
 ```
 
+## Create issues in JIRA
+https://support.atlassian.com/jira-software-cloud/docs/reference-issues-in-your-development-work/
+
 ## Cấu trúc thư mục
 
 Vui lòng đặt file đúng thư mục theo cấu trúc đã quy định trong README.
