@@ -1,0 +1,260 @@
+from ultralytics import YOLO
+import cv2
+import os
+import numpy as np
+import math
+
+# =============================================================
+# 1. ĐỌC ẢNH ĐẦU VÀO (ẢNH TĨNH) & LOAD MODEL
+# =============================================================
+IMAGE_PATH = "C:/Users/Admin/PycharmProjects/Chessrobot/image5.jpg"
+MODEL_PATH = "C:/Users/Admin/PycharmProjects/Chessrobot/train_clean204/weights/best.pt"
+
+# KIỂM TRA FILE
+if not os.path.exists(MODEL_PATH):
+    raise FileNotFoundError("Model not found")
+
+if not os.path.exists(IMAGE_PATH):
+    raise FileNotFoundError("Image not found")
+
+original_frame = cv2.imread(IMAGE_PATH)
+
+# LOAD MODEL
+model = YOLO(MODEL_PATH)
+print("Model loaded.")
+
+
+# =============================================================
+# 2. CẤU HÌNH CỬA SỔ & THANH TRƯỢT
+# =============================================================
+def nothing(x): pass
+
+
+cv2.namedWindow("Control Panel")
+cv2.resizeWindow("Control Panel", 400, 350)
+cv2.createTrackbar("Line Length", "Control Panel", 100, 100, nothing)
+cv2.createTrackbar("Threshold", "Control Panel", 121, 255, nothing)
+cv2.createTrackbar("Min Thickness", "Control Panel", 1, 20, nothing)
+cv2.createTrackbar("Max Thickness", "Control Panel", 28, 50, nothing)
+cv2.createTrackbar("Shadow Buffer", "Control Panel", 15, 30, nothing)  # Buffer lớn hơn do dùng bouding box
+cv2.createTrackbar("Show Text (0/1)", "Control Panel", 1, 1, nothing)
+
+# =============================================================
+# 3. CẤU HÌNH BÀN CỜ & TOẠ ĐỘ ROBOT
+# =============================================================
+ROW_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
+
+# --- Cấu hình kích thước thật (mm) ---
+REAL_WIDTH_A1_A9 = 230.0
+REAL_HEIGHT_A1_J1 = 234.0
+OFFSET_X = 115.0
+OFFSET_Y = 300.0
+CONF_TH = 0.25
+
+print(f"Đã mở ảnh {IMAGE_PATH} thành công!")
+print("Hãy kéo thanh trượt để căn chỉnh. Nhấn 'q' để thoát.")
+
+# =============================================================
+# 4. VÒNG LẶP XỬ LÝ ẢNH
+# =============================================================
+while True:
+    frame = original_frame.copy()
+
+    # 1. Lấy thông số từ thanh trượt
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    length_val = cv2.getTrackbarPos("Line Length", "Control Panel")
+    thresh_val = cv2.getTrackbarPos("Threshold", "Control Panel")
+    min_thick = cv2.getTrackbarPos("Min Thickness", "Control Panel")
+    max_thick = cv2.getTrackbarPos("Max Thickness", "Control Panel")
+    shadow_buf = cv2.getTrackbarPos("Shadow Buffer", "Control Panel")
+    show_text = cv2.getTrackbarPos("Show Text (0/1)", "Control Panel")
+
+    if length_val < 1: length_val = 1
+    if max_thick < min_thick: max_thick = min_thick + 1
+
+    # -------------------------------------------------------------
+    # BƯỚC 1: TÌM QUÂN CỜ BẰNG YOLO
+    # -------------------------------------------------------------
+    pieces_list = []
+
+    # Dự đoán bằng mô hình YOLO thay vì HoughCircles
+    results = model(IMAGE_PATH, conf=CONF_TH, verbose=False)
+    result = results[0]
+
+    if result.boxes is not None:
+        for box in result.boxes:
+            # Lấy thông tin bounding box
+            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+            cls_id = int(box.cls[0])
+            piece_name = result.names[cls_id]
+
+            # Tính tâm quân cờ
+            cx_piece = int((x1 + x2) / 2)
+            cy_piece = int((y1 + y2) / 2)
+
+            # Tính bán kính gần đúng (để tìm bóng/loại điểm giao)
+            r_piece = int(max((x2 - x1) / 2, (y2 - y1) / 2))
+
+            pieces_list.append((cx_piece, cy_piece, r_piece, piece_name))
+
+            # Vẽ hình hiển thị (tuỳ chọn)
+            cv2.circle(frame, (cx_piece, cy_piece), r_piece, (0, 255, 0), 2)
+
+    # -------------------------------------------------------------
+    # BƯỚC 2: TÌM GIAO ĐIỂM TRỐNG (KHÔNG BỊ CỜ CHE)
+    # -------------------------------------------------------------
+    _, binary = cv2.threshold(gray, thresh_val, 255, cv2.THRESH_BINARY_INV)
+    scale = max(5, 120 - length_val)
+    h_size = int(frame.shape[1] / scale)
+    v_size = int(frame.shape[0] / scale)
+
+    mask_h = cv2.morphologyEx(binary, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (h_size, 1)))
+    mask_v = cv2.morphologyEx(binary, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (1, v_size)))
+
+    cnts_h, _ = cv2.findContours(mask_h, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    for cnt in cnts_h:
+        x, y, w, h = cv2.boundingRect(cnt)
+        if not (min_thick <= h <= max_thick):
+            cv2.drawContours(mask_h, [cnt], -1, 0, -1)
+
+    cnts_v, _ = cv2.findContours(mask_v, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    for cnt in cnts_v:
+        x, y, w, h = cv2.boundingRect(cnt)
+        if not (min_thick <= w <= max_thick):
+            cv2.drawContours(mask_v, [cnt], -1, 0, -1)
+
+    mask_joints = cv2.bitwise_and(cv2.dilate(mask_h, np.ones((3, 3)), iterations=3),
+                                  cv2.dilate(mask_v, np.ones((3, 3)), iterations=3))
+
+    contours, _ = cv2.findContours(mask_joints, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    raw_points = []
+    for cnt in contours:
+        if cv2.contourArea(cnt) > 0:
+            M = cv2.moments(cnt)
+            if M["m00"] != 0:
+                cx = int(M["m10"] / M["m00"])
+                cy = int(M["m01"] / M["m00"])
+                is_shadow = False
+                for (px, py, pr, pname) in pieces_list:
+                    if math.sqrt((cx - px) ** 2 + (cy - py) ** 2) < (pr + shadow_buf):
+                        is_shadow = True
+                        break
+                if not is_shadow:
+                    raw_points.append((cx, cy))
+
+    # --- ĐƯA TÂM QUÂN CỜ VÀO LÀM ĐIỂM LƯỚI ---
+    for (px, py, pr, pname) in pieces_list:
+        raw_points.append((px, py))
+
+    # -------------------------------------------------------------
+    # BƯỚC 3: LỌC NHIỄU THEO GRID
+    # -------------------------------------------------------------
+    final_points = []
+    GRID_TOLERANCE = 15
+    MIN_NEIGHBORS = 2
+
+    for i, (cx, cy) in enumerate(raw_points):
+        row_count = 0
+        col_count = 0
+        for j, (tx, ty) in enumerate(raw_points):
+            if abs(cy - ty) <= GRID_TOLERANCE: row_count += 1
+            if abs(cx - tx) <= GRID_TOLERANCE: col_count += 1
+        if row_count >= MIN_NEIGHBORS and col_count >= MIN_NEIGHBORS:
+            final_points.append((cx, cy))
+
+    # =============================================================
+    # 5. CHUYỂN ĐỔI TOẠ ĐỘ ROBOT
+    # =============================================================
+    mapped_points = []
+    pixel_A1 = None
+    pixel_A9 = None
+    pixel_J1 = None
+
+    if len(final_points) > 10:
+        xs = [p[0] for p in final_points]
+        ys = [p[1] for p in final_points]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        width = max_x - min_x
+        height = max_y - min_y
+
+        if width > 0 and height > 0:
+            step_x = width / 8.0
+            step_y = height / 9.0
+
+            for (cx, cy) in final_points:
+                col_idx = int(round((cx - min_x) / step_x))
+                row_idx = int(round((cy - min_y) / step_y))
+                col_idx = max(0, min(col_idx, 8))
+                row_idx = max(0, min(row_idx, 9))
+
+                label_str = f"{ROW_LABELS[row_idx]}{col_idx + 1}"
+                mapped_points.append({'label': label_str, 'px': cx, 'py': cy})
+
+                if label_str == 'A1': pixel_A1 = (cx, cy)
+                if label_str == 'A9': pixel_A9 = (cx, cy)
+                if label_str == 'J1': pixel_J1 = (cx, cy)
+
+            # Tính toán tỉ lệ mm/pixel (Scale Factor)
+            if pixel_A1 and pixel_A9 and pixel_J1:
+                dist_pixel_x = abs(pixel_A9[0] - pixel_A1[0])
+                dist_pixel_y = abs(pixel_J1[1] - pixel_A1[1])
+
+                if dist_pixel_x > 0 and dist_pixel_y > 0:
+                    scale_x = REAL_WIDTH_A1_A9 / dist_pixel_x
+                    scale_y = REAL_HEIGHT_A1_J1 / dist_pixel_y
+
+                    mapped_points.sort(key=lambda k: k['label'])
+
+                    # Quét toàn bộ điểm lưới để phân loại hiển thị
+                    for pt in mapped_points:
+                        px, py = pt['px'], pt['py']
+
+                        # Tính toạ độ chung cho điểm này
+                        rob_x = ((px - pixel_A1[0]) * scale_x) - OFFSET_X
+                        rob_y = ((pixel_A1[1] - py) * scale_y) - OFFSET_Y
+                        rob_x = round(rob_x, 1)
+                        rob_y = round(rob_y, 1)
+
+                        # Kiểm tra xem điểm này là ô trống hay là tâm quân cờ
+                        is_piece = False
+                        piece_radius = 0
+                        found_piece_name = ""
+                        for (c_x, c_y, c_r, c_name) in pieces_list:
+                            if math.sqrt((px - c_x) ** 2 + (py - c_y) ** 2) < 20:  # Dung sai 20 pixel do bounding box
+                                is_piece = True
+                                piece_radius = c_r
+                                found_piece_name = c_name
+                                break
+
+                        if show_text == 1:
+                            if is_piece:
+                                # --- 5B. NẾU LÀ QUÂN CỜ: In Tên Class và Toạ độ Robot ---
+                                cv2.circle(frame, (px, py), 3, (0, 0, 255), -1)
+                                text_str = f"{found_piece_name}[{int(rob_x)},{int(rob_y)}]"
+                                cv2.putText(frame, text_str, (px - 30, py + piece_radius + 15),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 255, 0), 1)
+                            else:
+                                # --- 5A. NẾU LÀ Ô TRỐNG: CHỮ VÀNG CHỮ NHỎ ---
+                                cv2.circle(frame, (px, py), 3, (0, 0, 255), -1)
+                                cv2.putText(frame, f"{int(rob_x)},{int(rob_y)}", (px - 20, py + 20),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 255, 255), 1)
+
+                                if pt['label'] == 'A1':
+                                    cv2.circle(frame, (px, py), 3, (255, 0, 0), -1)
+
+    # RESIZE để vừa màn hình
+    scale_percent = 100
+    width = int(frame.shape[1] * scale_percent / 100)
+    height = int(frame.shape[0] * scale_percent / 100)
+    resized = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+
+    # HIỂN THỊ ẢNH
+    cv2.imshow("Ket qua (Anh Tinh)", resized)
+
+    # Thoát nếu nhấn phím 'q'
+    if cv2.waitKey(10) & 0xFF == ord('q'):
+        break
+
+cv2.destroyAllWindows()
