@@ -1,0 +1,49 @@
+from ultralytics import YOLO
+import cv2
+import os
+
+MODEL_PATH = r"runs/detect/train_clean204/weights/best.pt"
+IMAGE_PATH = r"dataset/images/anh test thuc te 2.jpg"   
+CONF_TH = 0.25  
+
+# KIỂM TRA FILE
+if not os.path.exists(MODEL_PATH):
+    raise FileNotFoundError("Model not found")
+
+if not os.path.exists(IMAGE_PATH):
+    raise FileNotFoundError("Image not found")
+
+# LOAD MODEL
+model = YOLO(MODEL_PATH)
+print("Model loaded.")
+
+# PREDICT
+results = model(IMAGE_PATH, conf=CONF_TH)
+
+result = results[0]
+
+# In số lượng box
+if result.boxes is None:
+    print("No detections.")
+else:
+    print("Detected objects:", len(result.boxes))
+
+    for box in result.boxes:
+        cls_id = int(box.cls[0])
+        conf = float(box.conf[0])
+        print("Class:", result.names[cls_id], "Conf:", round(conf, 3))
+
+# HIỂN THỊ ẢNH
+annotated = result.plot()
+
+# RESIZE 
+scale_percent = 30  
+
+width = int(annotated.shape[1] * scale_percent / 100)
+height = int(annotated.shape[0] * scale_percent / 100)
+
+resized = cv2.resize(annotated, (width, height), interpolation=cv2.INTER_AREA)
+
+cv2.imshow("YOLO Result", resized)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
