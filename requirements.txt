@@ -1,0 +1,12 @@
+# CCR3 - Chinese Chess Robot Dependencies
+# Python 3.9+
+
+# Computer Vision
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# YOLOv8
+ultralytics>=8.0.0
+
+# Labeling tool (optional - install if labeling locally)
+# labelImg

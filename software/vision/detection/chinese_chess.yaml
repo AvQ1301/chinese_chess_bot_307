@@ -1,0 +1,29 @@
+# Chinese Chess YOLOv8 Dataset Configuration
+# Dùng cho huấn luyện YOLOv8 nhận diện quân cờ tướng
+# Dataset source: Roboflow (Chinese Chess v6)
+
+# Đường dẫn dataset (tuyệt đối)
+path: /home/qbot/chinese_chess_bot_307/datasets
+train: train/images
+val: valid/images
+test: test/images
+
+# Số lượng class
+nc: 14
+
+# Tên các class (thứ tự khớp với Roboflow label ID 0-13)
+names:
+  0: b_advisor
+  1: b_cannon
+  2: b_chariot
+  3: b_elephant
+  4: b_general
+  5: b_horse
+  6: b_soldier
+  7: r_advisor
+  8: r_cannon
+  9: r_chariot
+  10: r_elephant
+  11: r_general
+  12: r_horse
+  13: r_soldier

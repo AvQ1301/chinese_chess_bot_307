@@ -89,3 +89,16 @@ tmp/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ========================
+# Training runs & backups
+# ========================
+runs/
+datasets/train_backup/
+datasets/valid_backup/
+datasets/*.cache
+datasets/split_dataset.py
+datasets/data01
+datasets/*.Identifier
+*.pyc
+.python-version

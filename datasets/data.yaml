@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 14
+names: ['b_advisor', 'b_cannon', 'b_chariot', 'b_elephant', 'b_general', 'b_horse', 'b_soldier', 'r_advisor', 'r_cannon', 'r_chariot', 'r_elephant', 'r_general', 'r_horse', 'r_soldier']
+
+roboflow:
+  workspace: chinesechess-zfsde
+  project: chinese-chess-qvq2u
+  version: 6
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/chinesechess-zfsde/chinese-chess-qvq2u/dataset/6
